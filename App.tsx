@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { Task, TaskColor } from './types';
 import TaskCard from './components/TaskCard';
 import TaskModal from './components/TaskModal';
-import { organizeTasksWithAI } from './services/geminiService';
 import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
@@ -12,8 +11,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [isAILoading, setIsAILoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   
   // Drag and Drop state
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
@@ -152,47 +151,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMagicOrganize = async () => {
-    if (tasks.length < 2) return;
-    setIsAILoading(true);
-    setError(null);
-    try {
-      const sortedIds = await organizeTasksWithAI(tasks);
-      if (!sortedIds || sortedIds.length === 0) throw new Error("AI returned empty list");
-
-      const sortedTasks = [...tasks].sort((a, b) => {
-        const indexA = sortedIds.indexOf(a.id);
-        const indexB = sortedIds.indexOf(b.id);
-        // Jeśli ID nie ma w liście, przesuń na koniec
-        const finalA = indexA === -1 ? 999 : indexA;
-        const finalB = indexB === -1 ? 999 : indexB;
-        return finalA - finalB;
-      }).map((t, idx) => ({ ...t, order_index: idx }));
-
-      // Optymistyczna aktualizacja UI
-      setTasks(sortedTasks);
-      
-      const { error: sbError } = await supabase.from('tasks').upsert(
-        sortedTasks.map(t => ({
-          id: t.id,
-          title: t.title,
-          description: t.description || '',
-          color: t.color,
-          priority: t.priority,
-          created_at: Number(t.createdAt),
-          order_index: Number(t.order_index)
-        }))
-      );
-
-      if (sbError) throw sbError;
-    } catch (err: any) {
-      console.error('Magic Organize Error:', err);
-      setError('AI uporządkowało zadania, ale nie udało się zapisać nowej kolejności w bazie.');
-    } finally {
-      setIsAILoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4">
@@ -212,15 +170,26 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button 
-              onClick={handleMagicOrganize}
-              disabled={isAILoading || tasks.length < 2}
-              className="hidden sm:flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl font-semibold border border-indigo-100 hover:bg-indigo-100 transition-colors disabled:opacity-50"
-            >
-              {isAILoading ? (
-                <div className="w-4 h-4 border-2 border-indigo-700 border-t-transparent rounded-full animate-spin"></div>
-              ) : "Smart Sort"}
-            </button>
+            <div className="flex bg-slate-100 p-1 rounded-xl mr-2">
+              <button 
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                title="Grid View"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                title="List View"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
             <button 
               onClick={() => {
                 setEditingTask(null);
@@ -269,7 +238,10 @@ const App: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className={viewMode === 'grid' 
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" 
+            : "flex flex-col gap-4 max-w-4xl mx-auto"
+          }>
             {tasks.map((task, index) => (
               <TaskCard
                 key={task.id}
@@ -284,6 +256,7 @@ const App: React.FC = () => {
                   setEditingTask(t);
                   setIsModalOpen(true);
                 }}
+                viewMode={viewMode}
               />
             ))}
           </div>

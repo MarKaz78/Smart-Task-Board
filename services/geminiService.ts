@@ -5,34 +5,6 @@ import { Task } from "../types";
 // Bezpośrednia inicjalizacja zgodnie z wytycznymi
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const organizeTasksWithAI = async (tasks: Task[]): Promise<string[]> => {
-  const ai = getAI();
-  const taskData = tasks.map(t => ({ id: t.id, title: t.title, desc: t.description }));
-  
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Analyze these tasks and return a JSON array of task IDs sorted by logical priority (most urgent/important first).
-    Tasks: ${JSON.stringify(taskData)}`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
-      }
-    }
-  });
-
-  try {
-    let text = response.text || "[]";
-    // Czyścimy tekst z ewentualnych bloków kodu markdown
-    text = text.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
-    return JSON.parse(text);
-  } catch (e) {
-    console.error("Failed to parse AI response", e);
-    return tasks.map(t => t.id);
-  }
-};
-
 export const enhanceTaskDescription = async (title: string): Promise<string> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
