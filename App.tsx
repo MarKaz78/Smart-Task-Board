@@ -36,7 +36,7 @@ const App: React.FC = () => {
 
       const mappedTasks: Task[] = (data || []).map(d => ({
         ...d,
-        createdAt: d.created_at || d.createdAt
+        createdAt: Number(d.created_at || d.createdAt)
       }));
       setTasks(mappedTasks);
     } catch (err: any) {
@@ -72,14 +72,17 @@ const App: React.FC = () => {
         updatedTasks.map(t => ({
           id: t.id,
           title: t.title,
-          description: t.description,
+          description: t.description || '',
           color: t.color,
           priority: t.priority,
-          created_at: t.createdAt,
-          order_index: t.order_index
+          created_at: Number(t.createdAt),
+          order_index: Number(t.order_index)
         }))
       );
-      if (sbError) setError('Błąd podczas zapisywania kolejności.');
+      if (sbError) {
+        console.error('Upsert error:', sbError);
+        setError('Błąd podczas zapisywania kolejności.');
+      }
       setSyncing(false);
     }
     setDraggedItemIndex(null);
@@ -92,6 +95,7 @@ const App: React.FC = () => {
     if (!sbError) {
       setTasks(prev => prev.filter(t => t.id !== id));
     } else {
+      console.error('Delete error:', sbError);
       setError('Nie udało się usunąć zadania.');
     }
     setSyncing(false);
@@ -140,7 +144,8 @@ const App: React.FC = () => {
       }
       setIsModalOpen(false);
       setEditingTask(null);
-    } catch (err) {
+    } catch (err: any) {
+      console.error('Save error:', err);
       setError('Błąd podczas zapisywania danych w Supabase.');
     } finally {
       setSyncing(false);
@@ -150,32 +155,39 @@ const App: React.FC = () => {
   const handleMagicOrganize = async () => {
     if (tasks.length < 2) return;
     setIsAILoading(true);
+    setError(null);
     try {
       const sortedIds = await organizeTasksWithAI(tasks);
+      if (!sortedIds || sortedIds.length === 0) throw new Error("AI returned empty list");
+
       const sortedTasks = [...tasks].sort((a, b) => {
         const indexA = sortedIds.indexOf(a.id);
         const indexB = sortedIds.indexOf(b.id);
-        if (indexA === -1) return 1;
-        if (indexB === -1) return -1;
-        return indexA - indexB;
+        // Jeśli ID nie ma w liście, przesuń na koniec
+        const finalA = indexA === -1 ? 999 : indexA;
+        const finalB = indexB === -1 ? 999 : indexB;
+        return finalA - finalB;
       }).map((t, idx) => ({ ...t, order_index: idx }));
 
+      // Optymistyczna aktualizacja UI
       setTasks(sortedTasks);
       
       const { error: sbError } = await supabase.from('tasks').upsert(
         sortedTasks.map(t => ({
           id: t.id,
           title: t.title,
-          description: t.description,
+          description: t.description || '',
           color: t.color,
           priority: t.priority,
-          created_at: t.createdAt,
-          order_index: t.order_index
+          created_at: Number(t.createdAt),
+          order_index: Number(t.order_index)
         }))
       );
+
       if (sbError) throw sbError;
-    } catch (err) {
-      setError('AI uporządkowało zadania, ale nie udało się zapisać nowej kolejności.');
+    } catch (err: any) {
+      console.error('Magic Organize Error:', err);
+      setError('AI uporządkowało zadania, ale nie udało się zapisać nowej kolejności w bazie.');
     } finally {
       setIsAILoading(false);
     }
@@ -195,7 +207,7 @@ const App: React.FC = () => {
               <h1 className="text-xl font-bold tracking-tight">ZenPriority</h1>
               <div className="flex gap-2 items-center">
                 {syncing && <span className="text-[10px] text-indigo-500 animate-pulse font-medium">Synchronizacja...</span>}
-                {error && <span className="text-[10px] text-rose-500 font-bold">Błąd połączenia</span>}
+                {error && <span className="text-[10px] text-rose-500 font-bold">Błąd</span>}
               </div>
             </div>
           </div>
@@ -226,7 +238,7 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-6 mt-4">
           <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm flex justify-between items-center">
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="font-bold">×</button>
+            <button onClick={() => setError(null)} className="font-bold text-lg leading-none">×</button>
           </div>
         </div>
       )}

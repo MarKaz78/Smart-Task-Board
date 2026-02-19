@@ -30,7 +30,10 @@ export const organizeTasksWithAI = async (tasks: Task[]): Promise<string[]> => {
   });
 
   try {
-    return JSON.parse(response.text || "[]");
+    let text = response.text || "[]";
+    // Czyścimy tekst z ewentualnych bloków kodu markdown
+    text = text.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
+    return JSON.parse(text);
   } catch (e) {
     console.error("Failed to parse AI response", e);
     return tasks.map(t => t.id);
