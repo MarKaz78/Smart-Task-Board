@@ -2,15 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Task } from "../types";
 
-const getEnv = (key: string, fallback: string = ''): string => {
-  try {
-    return (typeof process !== 'undefined' && process.env && process.env[key]) || fallback;
-  } catch (e) {
-    return fallback;
-  }
-};
-
-const getAI = () => new GoogleGenAI({ apiKey: getEnv('API_KEY') });
+// Bezpośrednia inicjalizacja zgodnie z wytycznymi
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const organizeTasksWithAI = async (tasks: Task[]): Promise<string[]> => {
   const ai = getAI();
